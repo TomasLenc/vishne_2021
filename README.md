@@ -1,6 +1,6 @@
 # TappingPaper
-Code for Vishne, Gal, et al. "Impaired online error-correction disrupts synchronization to external events in autism." bioRxiv (2020).
-https://www.biorxiv.org/content/10.1101/2020.09.28.316828v1
+Code for Vishne, Gal, et al. "Slow update of internal representations impedes synchronization in autism." Nature Communications (2021).
+https://www.biorxiv.org/content/10.1101/2020.09.28.316828v1 (this is a link to the biorxiv, will be updated once the paper is published)
 
 
 raw_data.mat includes:

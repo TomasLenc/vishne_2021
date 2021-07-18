@@ -1,30 +1,30 @@
-%% create final workspace with all I need
+%% load stuff
 clear all; clc; close all;
 CODE_DIR='C:\Users\user\Google Drive\Tapping_Project';
 cd(CODE_DIR);
 load('raw_data.mat')
+SAVE_NAME = 'analyses_data';
 
 % saves in different file
 run_simulations = false;
 
 % these are just to save time. if I don't rerun them it copies from the
 % previous file and saves it with the new stuff
-run_hierarchical_regression = true;
-run_computational_modelling = true;
+run_hierarchical_regression = false;
+run_computational_modelling = false;
 
 %% visuals
 
 font_size = struct();
-font_size.tit   = 16;
-font_size.lab   = 14;
-font_size.tick  = 13;
-font_size.txt   = 11;
-font_size.ltr   = 18;
+font_size.tit   = 7;
+font_size.lab   = 7;
+font_size.tick  = 6;
+font_size.txt   = 5;
+font_size.ltr   = 7;
 
 symbols = struct();
-symbols.c = {[0,0,1],[1,0,0],[0,1,0]};
-symbols.s = {'bo','r^','gs'};
-symbols.sl = {'bo-','r^-','gs-'};
+symbols.c = {[0 114 178]/255,[213 94 0]/255,[0 158 115]/255}; % colors from Wong, 2011 (https://doi.org/10.1038/nmeth.1618)
+symbols.s = {'o','^','s'};
 
 fig_num = 0; % in case I copy a figure with this in the title to another file (otherwise it would have been in all figures)
 ltrs = char("abcdefghijklmnopqrstuvwxyz");
@@ -195,7 +195,7 @@ if run_computational_modelling
             if ERR(sub,1,part) > block_exc
                continue
             end
-            [wing_isoch(sub,1,part), wing_isoch(sub,2,part), wing_isoch(sub,3,part)]=model_fit_exp1(rp,ep,me,mr);
+            [wing_isoch(sub,1,part), wing_isoch(sub,2,part), wing_isoch(sub,3,part)]=gal_bGLS_phase_model_single_and_multiperson(rp,ep,me,mr);
         end
     end
     wing_isoch_av = nanmean(wing_isoch,3);
@@ -322,8 +322,8 @@ if run_computational_modelling
                      rp = dat2(rep,:)';ep = dat1(rep,:)';
                      me = NMA(sub,blk+1,part);
                      [fits_per_seg(1,rep),fits_per_seg(2,rep),fits_per_seg(3,rep),fits_per_seg(4,rep),loglik_tmp(1,rep)]=...
-                      model_fit_exp2(rp,ep,me);
-                     [~,~,~,loglik_tmp(2,rep)]=model_fit_exp2_no_beta(rp,ep,me);
+                      gal_bGLS_period_model_single_and_multipeson_integ(rp,ep,me);
+                     [~,~,~,loglik_tmp(2,rep)]=gal_bGLS_period_model_single_and_multipeson_diff(rp,ep,me);
                 end
                 wing_changes(sub,blk,:,part)= nanmean(fits_per_seg,2);
                 loglik_segs(sub,blk,part,:)=nansum(loglik_tmp,2);
@@ -353,7 +353,7 @@ model_params_combined = (zalpha + zbeta)/2;
 
 %% and save
 
-save('analyses_data','font_size','symbols','ltrs','fig_num','leg',...
+save(SAVE_NAME,'font_size','symbols','ltrs','fig_num','leg',...
     'grp','n_subs','g_size','tempos',...
     'STD','NMA','ERR','rng_t',...
     'hierarchical_num_coeffs','hierarchical_num_coeffs_group','autoreg_coeffs','correls_all','isoch_all_e',...
@@ -454,7 +454,7 @@ for sub = 1:n_subs
             end
             rp = squeeze(sim_isoch(sub, rep, :, 2));
             me = nanmean(ep); mr = nanmean(rp);
-            [alpha_sim, st_sim, sm_sim] = model_fit_exp1(rp,ep,me,mr);
+            [alpha_sim, st_sim, sm_sim] = gal_bGLS_phase_model_single_and_multiperson(rp,ep,me,mr);
             recovery_val_isoch(:,sub,rep) = [alpha_sim, st_sim, sm_sim];
         end
     end
@@ -582,7 +582,7 @@ for blk = sim_changes_blks
                 for k = 1:size(segmented_block_e,1)
                     ep = segmented_block_e(k, :);
                     rp = segmented_block_r(k, :);
-                    [alpha_sim, beta_sim, st_sim, sm_sim]=model_fit_exp2(rp',ep',me);              
+                    [alpha_sim, beta_sim, st_sim, sm_sim]=gal_bGLS_period_model_single_and_multipeson_integ(rp',ep',me);              
                     recovered_per_seg(:,k) = [alpha_sim, beta_sim, st_sim, sm_sim];
                 end
                 recovery_val_changes(:,sub,rep,sim_changes_blks==blk) = nanmean(recovered_per_seg,2);

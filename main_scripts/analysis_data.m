@@ -1,17 +1,16 @@
 %% load stuff
-clear all; clc; close all;
-CODE_DIR='C:\Users\user\Google Drive\Tapping_Project';
-cd(CODE_DIR);
-load('raw_data.mat')
-SAVE_NAME = 'analyses_data';
+load('/datadisk/Dropbox/fromPapers/Vishne_2021/raw_data.mat')
+SAVE_NAME = '/datadisk/Dropbox/fromPapers/Vishne_2021/analyses_data';
+
+addpath('/datadisk/Dropbox/fromPapers/Vishne_2021/functions')
 
 % saves in different file
-run_simulations = false;
+run_simulations = true;
 
 % these are just to save time. if I don't rerun them it copies from the
 % previous file and saves it with the new stuff
-run_hierarchical_regression = false;
-run_computational_modelling = false;
+run_hierarchical_regression = true;
+run_computational_modelling = true;
 
 %% visuals
 
@@ -35,8 +34,8 @@ leg.clean = {'CON','DYS','ASD'};
 
 %% basic info
 
-grp     = subject_info.Group;
-n_subs  = length(grp);
+grp = subject_info.Group;
+n_subs = length(grp);
 tmp = tabulate(grp);
 g_size  = tmp(:,2);
 
@@ -44,25 +43,29 @@ step_sizes = [0, 10:20:90]';
 tempos = 500*ones(6,2);
 tempos(:,1) = tempos(:,1)-0.5*step_sizes;
 tempos(:,2) = tempos(:,2)+0.5*step_sizes;
-block_exc           = 0.4;
-blocks_alternating  = 3:5;
+block_exc = 0.4;
+blocks_alternating = 3:5;
 
 %% general
 
-STD=nan(n_subs,6,2);NMA=nan(n_subs,6,2);ERR = nan(n_subs,6,2);
+STD = nan(n_subs,6,2); 
+NMA = nan(n_subs,6,2); 
+ERR = nan(n_subs,6,2);
+
 for blk = 1:6
     for part = 1:2
         for sub = 1:n_subs
             e = tapping_data.e{sub,blk,part};
             r = tapping_data.r{sub,blk,part};
             s = tapping_data.s{sub,blk,part};
-            s2=s;
+            % this is for tempo-switch stimuli 
+            s2 = s;
             for kk=1:length(s)-1
                 if round(s(kk+1)/5)*5~=round(s(kk)/5)*5
                     s2(kk+1)=s(kk);
                 end
             end
-            asynch=e+s-s2;
+            asynch = e+s-s2;
             STD(sub,blk,part) = nanstd(asynch);
             NMA(sub,blk,part) = nanmean(asynch);
             ERR(sub,blk,part) = sum(isnan(asynch))/length(asynch);
@@ -70,59 +73,95 @@ for blk = 1:6
     end
 end
 
-%% isochronous
+%% Exp1 : isochronous
 
 % autocorrelation
-lag = 1;start_offset=1;
-correls_all=nan(n_subs,1);
-isoch_all_e=cell(3,1);
+lag = 1;
+start_offset=1;
+correls_all = nan(n_subs,1);
+isoch_all_e = cell(3,1);
 for pp=1:3
-    vec_all_e=[];
-    pwho= find(grp==pp);
-    for sub=pwho'
-        subj_e=[];
+    vec_all_e = [];
+    pwho = find(grp==pp);
+    for sub = pwho'
+        subj_e = [];
         for part = 1:2
+            
             e = tapping_data.e{sub,1,part};
             e = e-nanmean(e(start_offset:end));
-            vec_all_e=[vec_all_e;e(start_offset:(end-lag)),e((start_offset+lag):end)];
-            subj_e=[subj_e;e(start_offset:(end-lag)),e((start_offset+lag):end)];
+            
+            vec_all_e = [vec_all_e; ...
+                e(start_offset:(end-lag)), e((start_offset+lag):end)];
+            
+            subj_e=[subj_e; ...
+                e(start_offset:(end-lag)), e((start_offset+lag):end)];
         end
-        correls_all(sub)=corr(subj_e(:,1),subj_e(:,2),'Rows','complete');
+        correls_all(sub) = corr(subj_e(:,1), subj_e(:,2), ...
+                                'Rows','complete');
     end
     isoch_all_e{pp} = vec_all_e;
 end
 
 % autoregression
 if run_hierarchical_regression
+    
     % single subject
-    hierarchical_num_coeffs =nan(n_subs,1);max_coef = 5;
+    hierarchical_num_coeffs = nan(n_subs,1);
+    % Successively fit linear models trying to predict the current asynchrony
+    % from last n asynchronies. Start with -1, then fit -1, -2, then -1, -2,
+    % -3, etc. 
+    % Always test if the coefficient for the largest fitted lag is significant. 
+    % Stop once the coeficient for the largest fitted lag is not signifiacnt anymore. 
+    max_coef = 5; 
     for sub = 1:n_subs
-        y=[];X=[];
-        for part = 1:2
+        y=[];
+        X=[];
+        for part=1:2
+            % prepare asynchronies (subtract mean)
             e = tapping_data.e{sub,1,part};
-            nma = nanmean(e);e = e-nma;
-            y=[y;e((max_coef+1):end)];
+            nma = nanmean(e);
+            e = e-nma;
+            % append the trials into a signle long vector of the outcome
+            % variable (current tap asynchrony)
+            y = [y; e((max_coef+1):end)];
             Xtmp = [];
             for i = 1:max_coef
+                % Concatenate the predictor vectors (i.e. lagged asynchronies) for
+                % the two trials. 
+                % Stack lags as columns of the design matrix. 
                 Xtmp = [Xtmp, e((max_coef+1-i):end-i)];
             end
-            X=[X;Xtmp];
+            X = [X;Xtmp];
         end
-        for npred=2:max_coef
-            model = [eye(npred),zeros(npred,1)];
-            mdl_reg = fitlm(X(:,1:npred),y,model);
+        for npred = 2:max_coef
+            % Fit models with increasing amount of lags. We will have 1
+            % parameter per lag + intercept. 
+            model = [eye(npred), zeros(npred,1)];
+            
+            mdl_reg = fitlm(X(:,1:npred), y, model);
+            % For each test if the largest fitted lag coef is significantly 
+            % different from 0. If yes, continue fitting, if no, stop fitting. 
             [p, F] = coefTest(mdl_reg, [zeros(1,npred-1), 1]);
+            
             if p > 0.1
+                % test 
                 hierarchical_num_coeffs(sub)=npred-1;
                 break
             end
         end
     end
-    hierarchical_num_coeffs(isnan(hierarchical_num_coeffs))=max_coef;
+    % this vector contains the number of singnificant coefficients (i.e. lags)
+    % per subject
+    hierarchical_num_coeffs(isnan(hierarchical_num_coeffs)) = max_coef;
 
+    
     % group level
     hierarchical_num_coeffs_group = nan(1,4);
-    for pp = 1:4
+    % go over each group (or all subjects when pp=4) - essentially concatenate
+    % data across subjects in each group and fit linear model (i.e. this is not
+    % a hieararchical model...we're just pooling all data across subjects)
+    for pp=1:4
+        
         if pp<4
             sample_size = g_size(pp);
             sub_inds = find(grp==pp)';
@@ -130,57 +169,117 @@ if run_hierarchical_regression
             sample_size = n_subs;
             sub_inds = 1:n_subs;
         end
-        yall = cell(sample_size,1); Xall = cell(sample_size,1);s_ind=1;
-        for sub = sub_inds
-            y=[];X=[];
+        
+        yall = cell(sample_size,1); 
+        Xall = cell(sample_size,1);
+        s_ind=1;
+        
+        for sub=sub_inds
+            
+            % y vector contains asychronies across subjects
+            y=[];
+            
+            % X matrix contains predictor asynchronies (each column is a lag)
+            % [    |              |       ...     
+            % [    |              |       ...     
+            % [trial1_lag1    trial1_lag2 ...       
+            % [    |              |       ...        
+            % [    |              |       ...    
+            % [    |              |       ...     
+            % [    |              |       ...     
+            % [trial2_lag1    trial2_lag2 ...       
+            % [    |              |       ...        
+            % [    |              |       ...    
+            %     ...            ...
+            X=[];
             for part = 1:2
+                % prepare asynchronies (subtract mean)
                 e = tapping_data.e{sub,1,part};
-                nma = nanmean(e);e = e-nma;
-                y=[y;e((max_coef+1):end)];
+                nma = nanmean(e);
+                e = e-nma;
+                % outcome variable is the asycnrhony of each tap (starting from
+                % lags+1 of course)...we'll concatenate the two trials into a
+                % single vector...
+                y = [y; e((max_coef+1):end)];
                 Xtmp = [];
                 for i = 1:max_coef
+                    % predictor matrix: each column is a shifted version of the
+                    % data -> by -1 for lag1, by -2 for lag2 etc...again each 
+                    % column contains data concatenated across trials
                     Xtmp = [Xtmp, e((max_coef+1-i):end-i)];
                 end
-                X=[X;Xtmp];
+                % append the predictor matrix for this trial 
+                X = [X; Xtmp];
             end
-            yall{s_ind} = y; Xall{s_ind} = X;
+            % put all subjects together into a cell 
+            yall{s_ind} = y; 
+            Xall{s_ind} = X;
             s_ind = s_ind+1;
         end
+        % concatenate the outcome variable across subjects into a one long
+        % vector
         ycombined = cell2mat(yall);
-        Xcombined = zeros(length(ycombined),max_coef * sample_size);
+        % now we prepare the predictor matrix by combining across subjects
+        Xcombined = zeros(length(ycombined), max_coef*sample_size);
         ind = 0;
-        for sub = 1:sample_size
-            Xcombined((ind + 1):(ind+size(Xall{sub},1)), (sub-1)*max_coef+(1:max_coef)) = Xall{sub};
-            ind = ind +size(Xall{sub},1);
+        for sub=1:sample_size
+            % we stack columns for each subject, so that we have a "diagonal"
+            % design matrix -> plot it with: 
+            % > imagesc(Xcombined)
+            % > colormap(gray)
+            Xcombined((ind+1):(ind+size(Xall{sub},1)), (sub-1)*max_coef+(1:max_coef)) = Xall{sub};
+            ind = ind + size(Xall{sub},1);
         end
+        
+        % fit the models 
         for npred=1:max_coef
-            model = [eye(npred*sample_size),zeros(npred*sample_size,1)];
+            % create model matrix: there will be one parameter per lag for each
+            % participant, + one intercept 
+            model = [eye(npred*sample_size), zeros(npred*sample_size,1)];
+            % we will take out the lags of interest (still keeping all subjets
+            % next to each other)
             Xidx = repmat(boolean([ones(npred,1);zeros(max_coef-npred,1)]),sample_size,1);
-            mdl_reg = fitlm(Xcombined(:,Xidx),ycombined,model);
-            [p, F] = coefTest(mdl_reg, repmat([zeros(1,npred-1), 1],1,sample_size));
+            mdl_reg = fitlm(Xcombined(:,Xidx), ycombined, model);
+            % prepare the linear hypothesis vector: if we set multiple
+            % parameters to 1 here, we'll essentially get ANOVA out - i.e. as
+            % if we tested main effect (model comparison with vs. without those
+            % regressors included)
+            % Here we'll test coefficient corresponding to the tested lag (and
+            % we'll set the hypothesis to 1 for this coefficient for all
+            % subjects)
+            hypothesis = repmat([zeros(1,npred-1), 1], 1, sample_size); 
+            [p, F] = coefTest(mdl_reg, hypothesis);
             if p > 0.1
                 hierarchical_num_coeffs_group(pp) = npred-1;
                 break
             end
         end
-    end
+        
+    end % end of group 
+    
+    % this vector contains the number of singnificant coefficients (i.e. lags)
+    % per group 
     hierarchical_num_coeffs_group(isnan(hierarchical_num_coeffs_group))=max_coef;
 else
     load('analyses_data','hierarchical_num_coeffs','hierarchical_num_coeffs_group')
 end
 
+% here we just get the coefficients (not pvals) for each lag, separately for
+% each participant 
 num_coeffs = 4;
-autoreg_coeffs=nan(n_subs,num_coeffs);
+autoreg_coeffs = nan(n_subs, num_coeffs);
 for sub = 1:n_subs
-    y=[];X=[];
+    y=[];
+    X=[];
     for part = 1:2
         e = tapping_data.e{sub,1,part};
-        nma = nanmean(e);e = e-nma;
-        y=[y;e(5:end)];
-        X=[X;e(4:end-1),e(3:end-2),e(2:end-3),e(1:end-4)];
+        nma = nanmean(e);
+        e = e-nma;
+        y = [y; e(5:end)];
+        X = [X; e(4:end-1), e(3:end-2), e(2:end-3), e(1:end-4)];
     end
     [blk,~,resid] = regress(y,X);
-    autoreg_coeffs(sub,:)=blk;
+    autoreg_coeffs(sub,:) = blk;
 end
 
 % computational model
@@ -190,12 +289,15 @@ if run_computational_modelling
         for part = 1:2
             e = tapping_data.e{sub,1,part};
             r = tapping_data.r{sub,1,part};
-            ep=e;me=nanmean(ep);
-            rp=r;mr=nanmean(rp);
+            ep=e;
+            me=nanmean(ep);
+            rp=r;
+            mr=nanmean(rp);
             if ERR(sub,1,part) > block_exc
                continue
             end
-            [wing_isoch(sub,1,part), wing_isoch(sub,2,part), wing_isoch(sub,3,part)]=gal_bGLS_phase_model_single_and_multiperson(rp,ep,me,mr);
+            [wing_isoch(sub,1,part), wing_isoch(sub,2,part), wing_isoch(sub,3,part)]= ...
+                model_fit_exp1(rp, ep, me, mr);
         end
     end
     wing_isoch_av = nanmean(wing_isoch,3);
@@ -203,112 +305,231 @@ else
     load('analyses_data','wing_isoch','wing_isoch_av')
 end
 
-%% changes
+%% Experiment 2: tempo changes
+
+% The stimulus sequence changed IOI a few times within each trial. The slower
+% IOI was 500ms-delta and faster IOI was 500ms+delta. 
+% The data is saved as condition 2-6: 
+% 2: 495 vs. 505 ms (note small rounding error here)
+% 3: 485 vs. 515 ms
+% 4: 475 vs. 525 ms
+% 5: 465 vs. 535 ms
+% 6: 455 vs. 555 ms
+
+% They focus on the 3 largest step sizes...
 
 % single participant segments
+% ---------------------------
+
+% which taps around tempo change to take for analysis (here from -2 to +7) 
 rng_t = -2:7;
+
 e_segments = cell(n_subs,5,2,2); % sub, block, part, acc\dec
 r_segments = cell(n_subs,5,2,2);
 d_segments = cell(n_subs,5,2,2);
-for blk=2:6
-    for sub = 1:n_subs
-        for part = 1:2
+
+for blk=2:6 %condition
+    for sub=1:n_subs % subject
+        for part=1:2 % trial
+            
             e = tapping_data.e{sub,blk,part};
             s = tapping_data.s{sub,blk,part};
             r = tapping_data.r{sub,blk,part};
-            [~,inds]=min(abs(s-tempos(blk,:)),[],2);
+            
+            % find which IOIs are the "slower" and which "faster" tempo for
+            % this condition
+            [~,inds] = min(abs(s-tempos(blk,:)),[],2);
+            
+            % Find where the transitions between tempi occured (these are 
+            % indices of the event "ending" the IOI). 
             ind_trans = find(inds(2:end)-inds(1:end-1)~=0)+1;
-            if ind_trans(1)<-(rng_t(1)-1)
-                ind_trans=ind_trans(2:end);
+            
+            % discard transitions that occurred too early in the trial (i.e.
+            % there's not enough taps before the change)
+            if ind_trans(1) < -(rng_t(1)-1)
+                ind_trans = ind_trans(2:end);
             end
-            lens=ind_trans(2:end)-ind_trans(1:end-1);
-            which_transition = inds(ind_trans(1:end-1)); %1 acc,2 dec
-            if length(inds)-ind_trans(end)> rng_t(end)-1
-                lens=[lens;length(inds)-ind_trans(end)+1];
-                which_transition=[which_transition;inds(ind_trans(end))];
+            
+            % Calcualte length of each section in between two successive tempo
+            % changes. 
+            lens = ind_trans(2:end) - ind_trans(1:end-1);
+            
+            % Find whether the tempo transition was 1=acceleration or
+            % 2=deceleration. Ignore the segment after the last transition. 
+            which_transition = inds(ind_trans(1:end-1)); 
+            % But if there's enough events after the last transition, we can
+            % take the data from that very last segment too
+            if length(inds)-ind_trans(end) > rng_t(end)-1
+                lens = [lens; length(inds)-ind_trans(end)+1];
+                which_transition = [which_transition; inds(ind_trans(end))];
             end
-            ind_trans=ind_trans(1:length(lens));
-            tmpe = e(ind_trans+rng_t);tmpr = r(ind_trans+rng_t);tmps = s(ind_trans+rng_t);
+            
+            % get matrices with data where:
+            % -> each row is a tempo change
+            % -> columns are datapoints just before and after the change
+            ind_trans = ind_trans(1:length(lens));
+            tmpe = e(ind_trans+rng_t);
+            tmpr = r(ind_trans+rng_t);
+            tmps = s(ind_trans+rng_t);
+            
+            % only take clean data without nans
             segs_without_nans = ~any(isnan(tmpe),2);
-            all_trans_e=tmpe(segs_without_nans,:);
-            all_trans_d=all_trans_e+tmps(segs_without_nans,:);
-            all_trans_r=tmpr(segs_without_nans,:);
+            all_trans_e = tmpe(segs_without_nans,:);
+            all_trans_r = tmpr(segs_without_nans,:);
+            % d: distance from metronome event k-1 to the following tap k
+            % (we're expecting that this should be affected directly after the
+            % tempo change occurs)
+            all_trans_d = all_trans_e + tmps(segs_without_nans,:);
+            
+            % separate the two directions: acceleration vs. decceleration
             for d=1:2
-                e_segments{sub,blk-1,part,d}=all_trans_e(which_transition(segs_without_nans)==d,:);
-                d_segments{sub,blk-1,part,d}=all_trans_d(which_transition(segs_without_nans)==d,:);
-                r_segments{sub,blk-1,part,d}=all_trans_r(which_transition(segs_without_nans)==d,:);
+                e_segments{sub,blk-1,part,d} = all_trans_e(which_transition(segs_without_nans)==d,:);
+                d_segments{sub,blk-1,part,d} = all_trans_d(which_transition(segs_without_nans)==d,:);
+                r_segments{sub,blk-1,part,d} = all_trans_r(which_transition(segs_without_nans)==d,:);
             end
-        end
-    end
-end
+            
+        end % end trials 
+    end % end subjects
+end % end condition
+
 
 % averages (fig 4)
-min_trans_fig4=2;
+% ----------------
+
+% so we have a cell array [sub, condition, trial, acc\dec], where each cell is a matrix: 
+% -> each row is a tempo change
+% -> columns are datapoints just before and after the change
+
+% we'll only take trials with at least 2 tempo changes
+min_trans_fig4 = 2;
+
+% calculate number of tempo changes for each trial (it's just the number of
+% rows in the matrix)
 n_transitions = cellfun(@(x) size(x,1), d_segments);
+
+% sum the number of tempo-changes across trials (sepraately for subject,
+% condition, acc/dec)
 n_transitions = squeeze(sum(n_transitions,3));
-d_segments_both_parts = squeeze(cellfun(@(x,y) [x;y], d_segments(:,:,1,:), d_segments(:,:,2,:),'UniformOutput',false));
-d_segments_both_parts(n_transitions<min_trans_fig4)= {nan(1,length(rng_t))};
-d_segments_mean = cellfun(@(x) nanmean(x,1), d_segments_both_parts,'UniformOutput',false);
+
+% concatenate data for trials with acc and dec into a single matrix
+d_segments_both_parts = squeeze(cellfun(@(x,y) [x;y], ...
+        d_segments(:,:,1,:), d_segments(:,:,2,:), 'uni',false));
+
+% if there's not enough tempo changes, replace the call with a single row of
+% nans (i.e. discard the data)
+d_segments_both_parts(n_transitions<min_trans_fig4) = {nan(1,length(rng_t))};
+
+% for each tap position around the tempo change, calculate the mean time from
+% preceding metronome to the successive tap
+d_segments_mean = cellfun(@(x) nanmean(x,1), d_segments_both_parts, 'uni',false);
+
+% just add an empty dimension
 tmp_reshaped = cell(n_subs,1,5,2);
 tmp_reshaped(:,1,:,:) = d_segments_mean;
+
+% in the end, we get array:
+% [subject x tap_lag x change_magnitude x change_direction]
 d_segments_mean = cell2mat(tmp_reshaped);
 
+
 % signal detection
+% ----------------
+
+% we'll exclude tap +0 to +3 after the tempo change event occured
 exc_signal_detection    = 0:3;
-grp_d                   = cell(3,5,2); %d of the entire group- grp*blk*acc\dec
-individual_d            = cell(n_subs,5,2); %same just per participant
-grp_signal_detection    = nan(3,5,3); %grp*blk*type - d_prime, AUC, nomins
+
+grp_d                   = cell(3,5,2); % d of the entire group- grp*blk*acc\dec
+individual_d            = cell(n_subs,5,2); % same just per participant
+grp_signal_detection    = nan(3,5,3); % grp*blk*type - d_prime, AUC, nomins
 individual_signal_detection = nan(n_subs,5,3);
-for blk=2:6
-    for pp=1:3
+
+for blk=2:6 % condition (tempo change magnitude)
+    for pp=1:3 % group
+        
         vec_all_e=[];
+        d1_grp=[];
+        d2_grp=[];
         pwho= find(grp==pp);
-        d1_grp=[];d2_grp=[];
+        
         for sub=pwho'
-            d1=[];d2=[];
-            for part = 1:2
+            
+            d1=[];
+            d2=[];
+            for part=1:2
+                
+                % here we calculate the d values for responses from the slower
+                % vs. faster tempo - the distributions of these should be
+                % separable if there was successful tempo update
                 e = tapping_data.e{sub,blk,part};
                 s = tapping_data.s{sub,blk,part};
-                [~,inds]=min(abs(s-tempos(blk,:)),[],2);                
+                
+                [~,inds] = min(abs(s-tempos(blk,:)),[],2);                
                 ind_trans = find(inds(2:end)-inds(1:end-1)~=0)+1;
-                e(ind_trans+exc_signal_detection)=nan;
+                e(ind_trans+exc_signal_detection) = nan;
+                
                 d1=[d1;e(inds==1)+s(inds==1)];
                 d2=[d2;e(inds==2)+s(inds==2)];
+                
             end
-            individual_d{sub,blk-1,1}=d1;individual_d{sub,blk-1,2}=d2;
+            
+            individual_d{sub,blk-1,1}=d1;
+            individual_d{sub,blk-1,2}=d2;
+            
+            % let's calculate d' between the two distributions 
             denom = (nanvar(d2)+nanvar(d1)) / 2;
-            nomin = nanmean(d2)-nanmean(d1);
+            nomin = nanmean(d2)-nanmean(d1); 
             d_prime = nomin/sqrt(denom);
-            [~, ~, ~, AUC]= perfcurve([ones(length(d1),1);2*ones(length(d2),1)],[d1;d2], 2);
+            
+            % also get AUC (in addition to d')
+            [~, ~, ~, AUC]= perfcurve([ones(length(d1),1);2*ones(length(d2),1)], [d1;d2], 2);
+            
             individual_signal_detection(sub,blk-1,1)=d_prime;
             individual_signal_detection(sub,blk-1,2)=AUC;
             individual_signal_detection(sub,blk-1,3)=nomin;
-            d1_grp = [d1_grp;d1];d2_grp = [d2_grp;d2];
+            
+            d1_grp = [d1_grp;d1];
+            d2_grp = [d2_grp;d2];
         end
-        grp_d{pp,blk-1,1}=d1_grp;grp_d{pp,blk-1,2}=d2_grp;
+        
+        % get the same for the whole group (merged data across subjects)
+        grp_d{pp,blk-1,1}=d1_grp;
+        grp_d{pp,blk-1,2}=d2_grp;
+        
         denom = (nanvar(d2_grp)+nanvar(d1_grp)) / 2;
         nomin = nanmean(d2_grp)-nanmean(d1_grp);
+        
         d_prime = nomin/sqrt(denom);
-        [~, ~, ~, AUC]= perfcurve([ones(length(d1_grp),1);2*ones(length(d2_grp),1)],[d1_grp;d2_grp], 2);
+        [~, ~, ~, AUC] = perfcurve([ones(length(d1_grp),1);2*ones(length(d2_grp),1)],[d1_grp;d2_grp], 2);
+        
         grp_signal_detection(pp,blk-1,1)=d_prime;
         grp_signal_detection(pp,blk-1,2)=AUC;
         grp_signal_detection(pp,blk-1,3)=nomin;
     end
 end
 
-tmp=(individual_signal_detection(:,blocks_alternating,:)-mean(individual_signal_detection(grp==1,blocks_alternating,:)))./std(individual_signal_detection(grp==1,blocks_alternating,:));
+% calculate zsore (standardizing to mean and SD of group 1)
+% for d', AUC, and mu1-mu2 (i.e. without normalization), separately for each group and condition
+tmp=(individual_signal_detection(:,blocks_alternating,:) - ...
+    mean(individual_signal_detection(grp==1,blocks_alternating,:))) ./ ...
+    std(individual_signal_detection(grp==1,blocks_alternating,:));
+
 zindividual_signal_detection = squeeze(mean(tmp,2));
 
+
 % computational model
+% -------------------
 if run_computational_modelling
-    wing_changes=nan(n_subs,5,4,2);
-    loglik_segs = nan(n_subs,5,2,2); %last dim - full, partial model
-    nsegs=nan(n_subs,5,2);
+    
+    wing_changes = nan(n_subs,5,4,2);
+    loglik_segs = nan(n_subs,5,2,2); % last dim - full, partial model
+    nsegs = nan(n_subs,5,2);
+    
     for blk=1:5
-        for sub = 1:n_subs
-            for part = 1:2
-                dat1 = [e_segments{sub,blk,part,1};e_segments{sub,blk,part,2}];
-                dat2 = [r_segments{sub,blk,part,1};r_segments{sub,blk,part,2}];
+        for sub=1:n_subs
+            for part=1:2
+                
+                dat1 = [e_segments{sub,blk,part,1}; e_segments{sub,blk,part,2}];
+                dat2 = [r_segments{sub,blk,part,1}; r_segments{sub,blk,part,2}];
                 if ERR(sub,blk+1,part)>block_exc
                     continue
                 end
@@ -317,39 +538,72 @@ if run_computational_modelling
                 if nreps<1
                     continue
                 end
-                fits_per_seg = nan(4,nreps);loglik_tmp = nan(2,nreps);
-                for rep = 1:nreps
+                
+                fits_per_seg = nan(4,nreps);
+                loglik_tmp = nan(2,nreps);
+                for rep=1:nreps
+                    
                      rp = dat2(rep,:)';ep = dat1(rep,:)';
                      me = NMA(sub,blk+1,part);
-                     [fits_per_seg(1,rep),fits_per_seg(2,rep),fits_per_seg(3,rep),fits_per_seg(4,rep),loglik_tmp(1,rep)]=...
-                      gal_bGLS_period_model_single_and_multipeson_integ(rp,ep,me);
-                     [~,~,~,loglik_tmp(2,rep)]=gal_bGLS_period_model_single_and_multipeson_diff(rp,ep,me);
+                     
+                     [fits_per_seg(1,rep), fits_per_seg(2,rep), fits_per_seg(3,rep), fits_per_seg(4,rep), loglik_tmp(1,rep)] = ...
+                      model_fit_exp2(rp,ep,me);
+                  
+                     [~,~,~, loglik_tmp(2,rep)] = ...
+                         model_fit_exp2_no_beta(rp,ep,me);
+                     
                 end
-                wing_changes(sub,blk,:,part)= nanmean(fits_per_seg,2);
-                loglik_segs(sub,blk,part,:)=nansum(loglik_tmp,2);
+                wing_changes(sub,blk,:,part) = nanmean(fits_per_seg,2);
+                loglik_segs(sub,blk,part,:) = nansum(loglik_tmp,2);
+                
             end
         end
     end
-    wing_changes_av=nanmean(wing_changes,4);
-    tmp=(wing_changes_av(:,blocks_alternating,:)-nanmean(wing_changes_av(grp==1,blocks_alternating,:)))./nanstd(wing_changes_av(grp==1,blocks_alternating,:));
+    
+    wing_changes_av = nanmean(wing_changes,4);
+    
+    tmp = (wing_changes_av(:,blocks_alternating,:) - ...
+        nanmean(wing_changes_av(grp==1,blocks_alternating,:))) ./ ...
+        nanstd(wing_changes_av(grp==1,blocks_alternating,:));
+    
     zwing_changes = squeeze(nanmean(tmp,2));
     
-    tmp=(wing_changes(:,blocks_alternating,:,:)-nanmean(wing_changes(grp==1,blocks_alternating,:,:)))./nanstd(wing_changes(grp==1,blocks_alternating,:,:));    
+    tmp = (wing_changes(:,blocks_alternating,:,:) - ...
+        nanmean(wing_changes(grp==1,blocks_alternating,:,:))) ./ ...
+        nanstd(wing_changes(grp==1,blocks_alternating,:,:));    
+    
     zwing_changes_part = squeeze(nanmean(tmp,2));
+    
 else
-    load('analyses_data','wing_changes','wing_changes_av','zwing_changes','zwing_changes_part','loglik_segs','nsegs')
+    load('analyses_data','wing_changes','wing_changes_av', ...
+        'zwing_changes','zwing_changes_part','loglik_segs','nsegs')
 end
 
-aq50_full = aq_data.AQ50_FullScore;
-aq_data_austin = [sum(table2array(aq_data(:,2+[38,11,44,17,26,47,22,40,15,34,50,13])),2),...
-    sum(table2array(aq_data(:,2+[23,6,19,9,12,43,5,25])),2),...
-    sum(table2array(aq_data(:,2+[39,20,45,35,7,37])),2)];
-
-ma = nanmean(wing_isoch_av(grp==1,1));sa = nanstd(wing_isoch_av(grp==1,1));
+% combine the phase correction and error correction parameters into a sigle
+% "error-correction" score!
+ma = nanmean(wing_isoch_av(grp==1,1));
+sa = nanstd(wing_isoch_av(grp==1,1));
 zalpha = (wing_isoch_av(:,1) - ma)./sa;
-mb = nanmean(zwing_changes(grp==1,2));sb = nanstd(zwing_changes(grp==1,2));
+
+mb = nanmean(zwing_changes(grp==1,2));
+sb = nanstd(zwing_changes(grp==1,2));
 zbeta = (zwing_changes(:,2) - mb)./sb;
+
 model_params_combined = (zalpha + zbeta)/2;
+
+
+
+% questionnaire
+% -------------
+
+aq50_full = aq_data.AQ50_FullScore;
+
+aq_data_austin = [...
+    sum(table2array(aq_data(:,2+[38,11,44,17,26,47,22,40,15,34,50,13])),2),...
+    sum(table2array(aq_data(:,2+[23,6,19,9,12,43,5,25])),2),...
+    sum(table2array(aq_data(:,2+[39,20,45,35,7,37])),2)...
+    ];
+
 
 %% and save
 
@@ -360,6 +614,8 @@ save(SAVE_NAME,'font_size','symbols','ltrs','fig_num','leg',...
     'grp_d','individual_d','grp_signal_detection','individual_signal_detection','zindividual_signal_detection','d_segments_mean',...
     'wing_isoch','wing_isoch_av','wing_changes','wing_changes_av','zwing_changes','zwing_changes_part','loglik_segs','nsegs',...
     'model_params_combined','aq50_full','aq_data_austin');
+
+
 
 %% simulations
 

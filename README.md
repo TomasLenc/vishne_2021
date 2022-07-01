@@ -1,3 +1,34 @@
+# Commented & linted version of Vishne et al (2021) code
+
+Links to relevant papers: 
+
+Great introduction to linear models of SMS, and explanation of relevant concepts and equations:  
+- Jacoby, N., and Repp, B.H. (2012). _A general linear framework for the comparison and evaluation of models of sensorimotor synchronization_. Biol. Cybern. 106, 135–154.  
+
+<br>  
+
+Series of papers related to bGLS estimation: 
+
+- Repp, B.H., Keller, P.E., and Jacoby, N. (2012). _Quantifying phase correction in sensorimotor synchronization: Empirical comparison of three paradigms_. Acta Psychol. (Amst). 139, 281–290.  
+
+- Jacoby, N., Tishby, N., Repp, B.H., Ahissar, M., and Keller, P.E. (2015). _Parameter Estimation of Linear Sensorimotor Synchronization Models: Phase Correction, Period Correction, and Ensemble Synchronization_. Timing Time Percept. 3, 52–87.  
+
+- Jacoby, N., Keller, P.E., Repp, B.H., Ahissar, M., and Tishby, N. (2015). _Lower Bound on the Accuracy of Parameter Estimation Methods for Linear Sensorimotor Synchronization Models_. Timing Time Percept. 3, 32–51.  
+
+<br>  
+
+Adding prediction to the model (works on tempo-changing sequences):  
+- Harry, B., and Keller, P.E. (2019). _Tutorial and simulations with ADAM: an adaptation and anticipation model of sensorimotor synchronization_. Biol. Cybern. 113, 397–421.  
+
+<br>  
+
+Old paper on estimating timekeeper vs. motor variance:  
+
+- Vorberg, D., and Wing, A. (1996). _Chapter 4 Modeling variability and dependence in timing_. Handb. Percept. Action 2, 181–262.
+
+
+
+
 # TappingPaper
 Code for Vishne, Gal, et al. "Slow update of internal representations impedes synchronization in autism." Nature Communications (2021).
 https://www.biorxiv.org/content/10.1101/2020.09.28.316828v1 (this is a link to the biorxiv, will be updated once the paper is published)

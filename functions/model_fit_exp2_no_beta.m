@@ -20,7 +20,7 @@
 % 
 % CODE BY: Nori Jacoby (nori.viola@gmail.com) & Gal Vishne (gal.vishne@gmail.com)
 
-function [alphas,st,sm,logp]=model_fit_exp2_no_beta(R,As,MEAN_A)
+function [alphas, st, sm, logp]=model_fit_exp2_no_beta(R,As,MEAN_A)
 
 % parameters of GLS method
 ITER=20; % number of iterations

@@ -22,7 +22,8 @@
 % 
 % CODE BY: Nori Jacoby (nori.viola@gmail.com) & Gal Vishne (gal.vishne@gmail.com)
 
-function [alphas,st,sm,logp] = model_fit_exp1(R, As, MEAN_A, MEAN_R)
+function [alphas, st, sm, logp] = model_fit_exp1(...
+                                ITI, asynchronies, mean_asynchrony, mean_ITI)
 
 ITER = 20; % set parameters
 
@@ -30,21 +31,21 @@ TRESH = 1e-3; %this is the maximal difference between old solution and new solut
 % in the iteration if we get a change smaller than TRESH we simply stop (we
 % obtaine a local maximum).
 
-N = size(R,1)-1; % number of datapoints
-P = size(As,2);  % number of partners
+N = size(ITI,1)-1; % number of datapoints
+P = size(asynchronies,2);  % number of partners
 
-assert(size(R,1)==size(As,1));
-assert(size(MEAN_A,2)==P);
-assert(size(MEAN_A,1)==1);
+assert(size(ITI,1)==size(asynchronies,1));
+assert(size(mean_asynchrony,2)==P);
+assert(size(mean_asynchrony,1)==1);
 
 % subtract mean
 for p=1:P
-    As(:,p) = As(:,p)-MEAN_A(p);
+    asynchronies(:,p) = asynchronies(:,p)-mean_asynchrony(p);
 end
 
 % compute matrices
-b3 = R(2:end)-MEAN_R;
-A3 = [As(1:(end-1),:)];
+b3 = ITI(2:end)-mean_ITI;
+A3 = [asynchronies(1:(end-1),:)];
     
 missing_inds = isnan(b3) | isnan(A3);
 b3(missing_inds)=[];

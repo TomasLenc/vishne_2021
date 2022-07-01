@@ -284,15 +284,16 @@ end
 
 % computational model
 if run_computational_modelling
+    
     wing_isoch = nan(n_subs,3,2);
     for sub = 1:n_subs
         for part = 1:2
             e = tapping_data.e{sub,1,part};
             r = tapping_data.r{sub,1,part};
-            ep=e;
-            me=nanmean(ep);
-            rp=r;
-            mr=nanmean(rp);
+            ep = e;
+            me = nanmean(ep);
+            rp = r;
+            mr = nanmean(rp);
             if ERR(sub,1,part) > block_exc
                continue
             end
@@ -301,6 +302,7 @@ if run_computational_modelling
         end
     end
     wing_isoch_av = nanmean(wing_isoch,3);
+    
 else
     load('analyses_data','wing_isoch','wing_isoch_av')
 end
@@ -357,6 +359,7 @@ for blk=2:6 %condition
             % Find whether the tempo transition was 1=acceleration or
             % 2=deceleration. Ignore the segment after the last transition. 
             which_transition = inds(ind_trans(1:end-1)); 
+            
             % But if there's enough events after the last transition, we can
             % take the data from that very last segment too
             if length(inds)-ind_trans(end) > rng_t(end)-1
@@ -396,11 +399,12 @@ end % end condition
 % averages (fig 4)
 % ----------------
 
-% so we have a cell array [sub, condition, trial, acc\dec], where each cell is a matrix: 
+% so we have a cell array [sub, condition, trial, acc\dec], where each cell
+% is a matrix: 
 % -> each row is a tempo change
 % -> columns are datapoints just before and after the change
 
-% we'll only take trials with at least 2 tempo changes
+% we'll only take blocks with at least 2 tempo changes
 min_trans_fig4 = 2;
 
 % calculate number of tempo changes for each trial (it's just the number of
@@ -415,7 +419,7 @@ n_transitions = squeeze(sum(n_transitions,3));
 d_segments_both_parts = squeeze(cellfun(@(x,y) [x;y], ...
         d_segments(:,:,1,:), d_segments(:,:,2,:), 'uni',false));
 
-% if there's not enough tempo changes, replace the call with a single row of
+% if there's not enough tempo changes, replace the cell with a single row of
 % nans (i.e. discard the data)
 d_segments_both_parts(n_transitions<min_trans_fig4) = {nan(1,length(rng_t))};
 
@@ -463,12 +467,16 @@ for blk=2:6 % condition (tempo change magnitude)
                 e = tapping_data.e{sub,blk,part};
                 s = tapping_data.s{sub,blk,part};
                 
-                [~,inds] = min(abs(s-tempos(blk,:)),[],2);                
+                % find which parts of the block were slwoer and which faster
+                [~,inds] = min(abs(s-tempos(blk,:)),[],2);      
+                % find tempo transition points
                 ind_trans = find(inds(2:end)-inds(1:end-1)~=0)+1;
+                % exclude taps directly after tempo change
                 e(ind_trans+exc_signal_detection) = nan;
                 
-                d1=[d1;e(inds==1)+s(inds==1)];
-                d2=[d2;e(inds==2)+s(inds==2)];
+                % calculate d separately for slower and faster tempo ITIs 
+                d1 = [d1; e(inds==1)+s(inds==1)];
+                d2 = [d2; e(inds==2)+s(inds==2)];
                 
             end
             
@@ -481,11 +489,12 @@ for blk=2:6 % condition (tempo change magnitude)
             d_prime = nomin/sqrt(denom);
             
             % also get AUC (in addition to d')
-            [~, ~, ~, AUC]= perfcurve([ones(length(d1),1);2*ones(length(d2),1)], [d1;d2], 2);
+            [~, ~, ~, AUC] = perfcurve(...
+                [ones(length(d1),1); 2*ones(length(d2),1)], [d1;d2], 2);
             
-            individual_signal_detection(sub,blk-1,1)=d_prime;
-            individual_signal_detection(sub,blk-1,2)=AUC;
-            individual_signal_detection(sub,blk-1,3)=nomin;
+            individual_signal_detection(sub,blk-1,1) = d_prime;
+            individual_signal_detection(sub,blk-1,2) = AUC;
+            individual_signal_detection(sub,blk-1,3) = nomin;
             
             d1_grp = [d1_grp;d1];
             d2_grp = [d2_grp;d2];
@@ -528,8 +537,11 @@ if run_computational_modelling
         for sub=1:n_subs
             for part=1:2
                 
-                dat1 = [e_segments{sub,blk,part,1}; e_segments{sub,blk,part,2}];
-                dat2 = [r_segments{sub,blk,part,1}; r_segments{sub,blk,part,2}];
+                dat1 = [e_segments{sub,blk,part,1}; 
+                        e_segments{sub,blk,part,2}];
+                    
+                dat2 = [r_segments{sub,blk,part,1}; 
+                        r_segments{sub,blk,part,2}];
                 if ERR(sub,blk+1,part)>block_exc
                     continue
                 end

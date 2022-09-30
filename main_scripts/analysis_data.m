@@ -76,6 +76,8 @@ end
 %% Exp1 : isochronous
 
 % autocorrelation
+% ---------------
+
 lag = 1;
 start_offset=1;
 correls_all = nan(n_subs,1);
@@ -282,35 +284,66 @@ for sub = 1:n_subs
     autoreg_coeffs(sub,:) = blk;
 end
 
+
 % computational model
-if run_computational_modelling
-    
-    wing_isoch = nan(n_subs,3,2);
-    for sub = 1:n_subs
-        for part = 1:2
-            e = tapping_data.e{sub,1,part};
-            r = tapping_data.r{sub,1,part};
-            ep = e;
-            me = nanmean(ep);
-            rp = r;
-            mr = nanmean(rp);
-            if ERR(sub,1,part) > block_exc
-               continue
-            end
-            [wing_isoch(sub,1,part), wing_isoch(sub,2,part), wing_isoch(sub,3,part)]= ...
-                model_fit_exp1(rp, ep, me, mr);
+% -------------------
+
+% reminder about variable names
+% 
+% e: asynchronies
+% r: inter-tap-intervals
+% s: inter-stimulus-intervals
+
+% [subject, paramter, trial]
+wing_isoch = nan(n_subs,3,2);
+
+for sub = 1:n_subs
+    for part = 1:2
+
+        % take out the asynchronies for this subject/trial
+        e = tapping_data.e{sub,1,part};
+        % take out the inter-tap intervals for this subject/trial            
+        r = tapping_data.r{sub,1,part};
+
+        % get the means (ignore NaNs)
+        me = nanmean(e);
+        mr = nanmean(r);
+
+        % if more than 40% metronome sounds were missed, reject the trial
+        if ERR(sub,1,part) > block_exc
+           continue
         end
+
+        % fit the model 
+        [...
+            wing_isoch(sub,1,part), ...
+            wing_isoch(sub,2,part), ....
+            wing_isoch(sub,3,part)...
+        ]= ...
+            model_fit_exp1(r, e, me, mr);
     end
-    wing_isoch_av = nanmean(wing_isoch,3);
-    
-else
-    load('analyses_data','wing_isoch','wing_isoch_av')
 end
+
+% average the extimated parameters across trials
+wing_isoch_av = nanmean(wing_isoch, 3);
+
+    
+% alpha_grp1 = wing_isoch_av(grp==1, 1); 
+% alpha_grp2 = wing_isoch_av(grp==2, 1); 
+% alpha_grp3 = wing_isoch_av(grp==3, 1); 
+% 
+% figure('color', 'w')
+% plot(1, alpha_grp1, 'bo'); 
+% hold on
+% plot(2, alpha_grp2, 'ro'); 
+% plot(3, alpha_grp3, 'ko'); 
+% xlim([0, 4])
+
 
 %% Experiment 2: tempo changes
 
-% The stimulus sequence changed IOI a few times within each trial. The slower
-% IOI was 500ms-delta and faster IOI was 500ms+delta. 
+% The stimulus sequence changed IOI a few times within each trial. 
+% The slower IOI was 500ms-delta and faster IOI was 500ms+delta. 
 % The data is saved as condition 2-6: 
 % 2: 495 vs. 505 ms (note small rounding error here)
 % 3: 485 vs. 515 ms
@@ -323,7 +356,8 @@ end
 % single participant segments
 % ---------------------------
 
-% which taps around tempo change to take for analysis (here from -2 to +7) 
+% which taps around tempo change to take for analysis 
+% (here from -2 to +7) 
 rng_t = -2:7;
 
 e_segments = cell(n_subs,5,2,2); % sub, block, part, acc\dec
@@ -527,81 +561,150 @@ zindividual_signal_detection = squeeze(mean(tmp,2));
 
 % computational model
 % -------------------
-if run_computational_modelling
-    
-    wing_changes = nan(n_subs,5,4,2);
-    loglik_segs = nan(n_subs,5,2,2); % last dim - full, partial model
-    nsegs = nan(n_subs,5,2);
-    
-    for blk=1:5
-        for sub=1:n_subs
-            for part=1:2
+
+% [subject, condition, parameter, trial]
+wing_changes = nan(n_subs,5,4,2);
+
+% [subject, condition, trial, full/partial model]
+loglik_segs = nan(n_subs,5,2,2); 
+
+nsegs = nan(n_subs,5,2);
+
+% condition
+for blk=1:5
+    % subject
+    for sub=1:n_subs
+        % trial
+        for part=1:2
+            
+            % reminder: 
+            %
+            % e_segments shape is [sub, block, part, acc\dec]
+            % 
+            % each element of the cell array contains a matrix with taps
+            % segmented around tempo changes (here from -2 to +7) 
+            
+            % get asynchronies for this subject, block, trial 
+            % put the accellerations and deccelerations together
+            data_e = [e_segments{sub,blk,part,1}; 
+                      e_segments{sub,blk,part,2}];
+            
+            % do the same with ITIs
+            data_r = [r_segments{sub,blk,part,1}; 
+                      r_segments{sub,blk,part,2}];
                 
-                dat1 = [e_segments{sub,blk,part,1}; 
-                        e_segments{sub,blk,part,2}];
-                    
-                dat2 = [r_segments{sub,blk,part,1}; 
-                        r_segments{sub,blk,part,2}];
-                if ERR(sub,blk+1,part)>block_exc
-                    continue
-                end
-                nreps=size(dat1,1);
-                nsegs(sub,blk,part)=nreps;
-                if nreps<1
-                    continue
-                end
-                
-                fits_per_seg = nan(4,nreps);
-                loglik_tmp = nan(2,nreps);
-                for rep=1:nreps
-                    
-                     rp = dat2(rep,:)';ep = dat1(rep,:)';
-                     me = NMA(sub,blk+1,part);
-                     
-                     [fits_per_seg(1,rep), fits_per_seg(2,rep), fits_per_seg(3,rep), fits_per_seg(4,rep), loglik_tmp(1,rep)] = ...
-                      model_fit_exp2(rp,ep,me);
-                  
-                     [~,~,~, loglik_tmp(2,rep)] = ...
-                         model_fit_exp2_no_beta(rp,ep,me);
-                     
-                end
-                wing_changes(sub,blk,:,part) = nanmean(fits_per_seg,2);
-                loglik_segs(sub,blk,part,:) = nansum(loglik_tmp,2);
-                
+            % if there were too many missing taps, reject the trial 
+            if ERR(sub,blk+1,part)>block_exc
+                continue
             end
+            
+            % check how many tempo changes we have data for (in this trial)
+            nreps = size(data_e, 1);
+            % write that into a summary matrix 
+            nsegs(sub,blk,part) = nreps;
+            % if we don't have any...we're screwed
+            if nreps<1
+                continue
+            end
+
+            % now we'll fit the model separately for each snippet of data
+            % around the tempo changes
+            fits_per_seg = nan(4,nreps);
+            
+            loglik_tmp = nan(2,nreps);
+            
+            for rep=1:nreps
+
+                 % get asychronies 
+                 ep = data_e(rep,:)';
+                 
+                 % get ITIs
+                 rp = data_r(rep,:)';
+                 
+                 % this is just an overall mean asynchrony 
+                 me = NMA(sub,blk+1,part);
+
+                 % fit the full model
+                 [...
+                     fits_per_seg(1,rep),...
+                     fits_per_seg(2,rep), ...
+                     fits_per_seg(3,rep),...
+                     fits_per_seg(4,rep),...
+                     loglik_tmp(1,rep)...
+                     ] = ...
+                  model_fit_exp2(rp, ep, me);
+
+                 % fit the model without period correction
+                 [~,~,~, loglik_tmp(2,rep)] = ...
+                     model_fit_exp2_no_beta(rp,ep,me);
+
+            end
+            
+            % save the parameters (average across tempo changes in this trial)
+            wing_changes(sub,blk,:,part) = nanmean(fits_per_seg, 2);
+            
+            % save log likelihood for the full and restricted model 
+            % (sum them across the tempo changes in this trial)
+            loglik_segs(sub,blk,part,:) = nansum(loglik_tmp, 2);
+
         end
     end
-    
-    wing_changes_av = nanmean(wing_changes,4);
-    
-    tmp = (wing_changes_av(:,blocks_alternating,:) - ...
-        nanmean(wing_changes_av(grp==1,blocks_alternating,:))) ./ ...
-        nanstd(wing_changes_av(grp==1,blocks_alternating,:));
-    
-    zwing_changes = squeeze(nanmean(tmp,2));
-    
-    tmp = (wing_changes(:,blocks_alternating,:,:) - ...
-        nanmean(wing_changes(grp==1,blocks_alternating,:,:))) ./ ...
-        nanstd(wing_changes(grp==1,blocks_alternating,:,:));    
-    
-    zwing_changes_part = squeeze(nanmean(tmp,2));
-    
-else
-    load('analyses_data','wing_changes','wing_changes_av', ...
-        'zwing_changes','zwing_changes_part','loglik_segs','nsegs')
 end
 
+% average estimated parameteres across trials 
+wing_changes_av = nanmean(wing_changes, 4);
+
+% calculate zsore (standardizing to mean and SD of group 1)
+% for the parameters, separately for each group and condition
+tmp = (...
+       wing_changes_av(:, blocks_alternating, :) - ...
+       nanmean(wing_changes_av(grp==1,blocks_alternating,:))...
+       ) ./ ...
+       nanstd(wing_changes_av(grp==1,blocks_alternating,:));
+
+% average across the three conditions (3 out of 5)
+zwing_changes = squeeze(nanmean(tmp, 2));
+
+%    
+% beta_grp1 = zwing_changes(grp==1, 2); 
+% beta_grp2 = zwing_changes(grp==2, 2); 
+% beta_grp3 = zwing_changes(grp==3, 2); 
+% 
+% figure('color', 'w')
+% plot(1 + randn(length(beta_grp1), 1) * 0.1, beta_grp1, 'bo'); 
+% hold on
+% plot(2 + randn(length(beta_grp2), 1) * 0.1, beta_grp2, 'ro'); 
+% plot(3 + randn(length(beta_grp3), 1) * 0.1, beta_grp3, 'ko'); 
+% xlim([0, 4])
+% 
+
+ 
 % combine the phase correction and error correction parameters into a sigle
 % "error-correction" score!
-ma = nanmean(wing_isoch_av(grp==1,1));
-sa = nanstd(wing_isoch_av(grp==1,1));
-zalpha = (wing_isoch_av(:,1) - ma)./sa;
+mb = nanmean(zwing_changes(grp==1, 2));
+sb = nanstd(zwing_changes(grp==1, 2));
+zbeta = (zwing_changes(:, 2) - mb) ./ sb;
 
-mb = nanmean(zwing_changes(grp==1,2));
-sb = nanstd(zwing_changes(grp==1,2));
-zbeta = (zwing_changes(:,2) - mb)./sb;
+ma = nanmean(wing_isoch_av(grp==1, 1));
+sa = nanstd(wing_isoch_av(grp==1, 1));
+zalpha = (wing_isoch_av(:,1) - ma) ./ sa;
 
-model_params_combined = (zalpha + zbeta)/2;
+model_params_combined = (zalpha + zbeta) / 2;
+
+
+   
+grp1 = model_params_combined(grp==1); 
+grp2 = model_params_combined(grp==2); 
+grp3 = model_params_combined(grp==3); 
+
+figure('color', 'w')
+plot(1 + randn(length(grp1), 1) * 0.1, grp1, 'bo'); 
+hold on
+plot(2 + randn(length(grp2), 1) * 0.1, grp2, 'ro'); 
+plot(3 + randn(length(grp3), 1) * 0.1, grp3, 'ko'); 
+xlim([0, 4])
+ylim([-1.5, 2])
+
 
 
 

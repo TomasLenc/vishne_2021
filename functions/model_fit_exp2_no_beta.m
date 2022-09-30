@@ -20,22 +20,23 @@
 % 
 % CODE BY: Nori Jacoby (nori.viola@gmail.com) & Gal Vishne (gal.vishne@gmail.com)
 
-function [alphas, st, sm, logp]=model_fit_exp2_no_beta(R,As,MEAN_A)
+function [alphas, st, sm, logp]=model_fit_exp2_no_beta(...
+                                    ITI, asynchronies, mean_asynchrony)
 
 % parameters of GLS method
 ITER=20; % number of iterations
 TRESH=1e-3; %when changes betwen iterations are smaller than this, stop!
 
-N=size(R,1)-2; % number of samples
-P=size(As,2);  % number of partners
-assert(size(R,1)==size(As,1));
+N=size(ITI,1)-2; % number of samples
+P=size(asynchronies,2);  % number of partners
+assert(size(ITI,1)==size(asynchronies,1));
 
 for p=1:P
-     As(:,p)=As(:,p)-MEAN_A(p);
+     asynchronies(:,p)=asynchronies(:,p)-mean_asynchrony(p);
 end
 
-b3=R(3:end)-R(2:end-1);         % create the matrices
-A3=[As(2:end-1,:)-As(1:end-2,:)];
+b3=ITI(3:end)-ITI(2:end-1);         % create the matrices
+A3=[asynchronies(2:end-1,:)-asynchronies(1:end-2,:)];
     
 missing_inds = any(isnan([b3,A3]),2);
 b3(missing_inds)=[];

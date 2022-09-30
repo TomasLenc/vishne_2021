@@ -23,7 +23,7 @@
 % CODE BY: Nori Jacoby (nori.viola@gmail.com) & Gal Vishne (gal.vishne@gmail.com)
 
 function [alphas, st, sm, logp] = model_fit_exp1(...
-                                ITI, asynchronies, mean_asynchrony, mean_ITI)
+                ITI, asynchronies, mean_asynchrony, mean_ITI)
 
 ITER = 20; % set parameters
 
@@ -38,7 +38,7 @@ assert(size(ITI,1)==size(asynchronies,1));
 assert(size(mean_asynchrony,2)==P);
 assert(size(mean_asynchrony,1)==1);
 
-% subtract mean
+% subtract mean for each partner
 for p=1:P
     asynchronies(:,p) = asynchronies(:,p)-mean_asynchrony(p);
 end
@@ -47,6 +47,7 @@ end
 b3 = ITI(2:end)-mean_ITI;
 A3 = [asynchronies(1:(end-1),:)];
     
+% make sure we'll remove any data with NaNs
 missing_inds = isnan(b3) | isnan(A3);
 b3(missing_inds)=[];
 A3(missing_inds)=[];
@@ -92,8 +93,15 @@ for iter=1:ITER
 end % end of bGLS iterations.
 
 % output variables
+% ----------------
+
+% phase correction (alpha)
 alphas = -z';
+
+% motor noise
 sm = sqrt(-K12);
+
+% timekeeper noise
 st = sqrt(K11-2*(sm^2));
     
 % log likelihood
